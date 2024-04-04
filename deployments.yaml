@@ -1,0 +1,103 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-edot-warehouse-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-edot-warehouse
+spec:
+  selector:
+    matchLabels:
+      app: postgres-edot-warehouse
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: postgres-edot-warehouse
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:13
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: "user"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-edot-secret
+                  key: password
+            - name: POSTGRES_DB
+              value: "edot_warehouse_db"
+          volumeMounts:
+            - mountPath: /var/lib/postgresql/data
+              name: postgres-storage
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: postgres-edot-warehouse-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-edot-warehouse
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+  selector:
+    app: postgres-edot-warehouse
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: edot-warehouse-service
+spec:
+  selector:
+    matchLabels:
+      app: edot-warehouse-service
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: edot-warehouse-service
+    spec:
+      containers:
+        - name: edot-warehouse-service
+          image: dendyramdhan/edot-warehouse-service:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DB_HOST
+              value: "postgres-edot-warehouse"
+            - name: DB_USER
+              value: "user"
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-edot-secret
+                  key: password
+            - name: DB_NAME
+              value: "edot_warehouse_db"
+            - name: DB_PORT
+              value: "5432"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: edot-warehouse-service
+spec:
+  type: NodePort
+  ports:
+    - port: 8080
+  selector:
+    app: edot-warehouse-service
